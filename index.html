@@ -2,35 +2,20 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
-<title>Monopoly Banker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1"/>
+<title>Monopoly Engine</title>
 
 <style>
-:root{
-  --bg:#f2f3f7;
-  --card:#fff;
-  --text:#1c1c1e;
-  --shadow:0 6px 18px rgba(0,0,0,0.08);
-  --radius:14px;
-}
-
-*{
-  box-sizing:border-box;
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial;
-}
-
 body{
   margin:0;
-  background:var(--bg);
-  color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,Arial;
+  background:#f2f3f7;
   overflow-x:hidden;
 }
 
-.container{padding:14px;padding-bottom:120px;}
+.container{padding:14px;padding-bottom:120px}
 
-h2,h3{margin:10px 0;}
-
-input,select{
+input,select,button{
   width:100%;
   padding:14px;
   margin-top:8px;
@@ -40,31 +25,15 @@ input,select{
 }
 
 button{
-  width:100%;
-  padding:14px;
-  margin-top:8px;
-  border:none;
-  border-radius:14px;
-  font-size:16px;
-  font-weight:600;
   background:#007aff;
-  color:#fff;
+  color:white;
+  border:none;
+  font-weight:600;
 }
 
-button.danger{background:#ff3b30;}
+button.danger{background:#ff3b30}
 
-.row{display:flex;gap:10px;}
-.row > *{flex:1;}
-
-.property{
-  display:flex;
-  justify-content:space-between;
-  padding:10px;
-  border-radius:12px;
-  margin-top:8px;
-  color:#fff;
-  font-weight:700;
-}
+h3{margin:12px 0 6px}
 
 .ledger-row{
   display:flex;
@@ -73,13 +42,13 @@ button.danger{background:#ff3b30;}
   border-bottom:1px solid #eee;
 }
 
-.red{color:#ff3b30;}
+.small{font-size:12px;opacity:0.7}
 
-.small{font-size:12px;opacity:0.8;}
+.red{color:#ff3b30}
 
-.logBox{
+.log{
   height:140px;
-  overflow-y:auto;
+  overflow:auto;
   background:#111;
   color:#0f0;
   font-family:monospace;
@@ -88,28 +57,15 @@ button.danger{background:#ff3b30;}
   border-radius:12px;
 }
 
-/* modal */
-#backdrop{
-  position:fixed;
-  inset:0;
-  background:rgba(0,0,0,0.4);
-  display:none;
+.property{
+  display:flex;
+  justify-content:space-between;
+  padding:10px;
+  margin-top:8px;
+  border-radius:12px;
+  color:white;
+  font-weight:700;
 }
-
-#modal{
-  position:fixed;
-  bottom:0;
-  left:0;
-  width:100%;
-  background:#fff;
-  border-radius:18px 18px 0 0;
-  padding:14px;
-  transform:translateY(100%);
-  transition:0.25s;
-}
-
-#modal.show{transform:translateY(0);}
-
 </style>
 </head>
 
@@ -117,143 +73,190 @@ button.danger{background:#ff3b30;}
 
 <div class="container">
 
-<!-- SETUP -->
 <div id="setup">
-  <h2>Monopoly Banker</h2>
-
-  <input id="playersInput" placeholder="Players (comma separated)" />
-  <input id="startCash" type="number" inputmode="numeric" value="1500"/>
-
+  <h2>Monopoly Engine</h2>
+  <input id="playersInput" placeholder="Players (comma separated)"/>
+  <input id="startCash" type="number" value="1500"/>
   <button onclick="init()">Start Game</button>
 </div>
 
-<!-- APP -->
-<div id="app" style="display:none;">
+<div id="app" style="display:none">
 
-  <h3>Move Player</h3>
-  <select id="movePlayer"></select>
-  <input id="roll" type="number" inputmode="numeric" placeholder="Dice roll"/>
-  <button onclick="move()">Move</button>
+<h3>Action (NO ROUNDS — PURE EVENTS)</h3>
 
-  <h3>Ledger</h3>
-  <div id="ledger"></div>
+<select id="playerSelect"></select>
+<input id="roll" type="number" placeholder="Dice roll"/>
+<button onclick="move()">Execute Move Event</button>
 
-  <h3>Log</h3>
-  <div id="logBox" class="logBox"></div>
+<h3>State</h3>
+<div id="ledger"></div>
+
+<h3>Properties</h3>
+<div id="board"></div>
+
+<h3>Log</h3>
+<div id="log" class="log"></div>
 
 </div>
-</div>
 
-<!-- MODAL -->
-<div id="backdrop" onclick="closeModal()"></div>
-<div id="modal">
-  <h3>Edit Property</h3>
-
-  <input id="mName"/>
-  <input id="mRent" type="number"/>
-  <input id="mPass" type="number"/>
-
-  <div class="row">
-    <input id="mHouses" type="number" placeholder="Houses"/>
-    <input id="mHotels" type="number" placeholder="Hotels"/>
-  </div>
-
-  <select id="activePlayer"></select>
-
-  <button onclick="closeModal()">Close</button>
 </div>
 
 <script>
 
+/* =========================
+   CORE STATE (EVENT-DRIVEN)
+========================= */
+
 let players=[];
-let balances={};
-let positions={};
+let balance={};
+let position={};
 
 let properties=[];
-let current=null;
 
-const colors={
-  Brown:"#8b5a2b",
-  "Light Blue":"#5dade2",
-  Pink:"#ff6b81",
-  Orange:"#ff9f43",
-  Red:"#ff3b30",
-  Yellow:"#f1c40f",
-  Green:"#2ecc71",
-  "Dark Blue":"#1e3799",
-  Special:"#7f8c8d"
-};
+/* fixed simple board */
+const boardSize = 40;
 
-/* INIT */
+/* sample properties mapped onto board positions */
+properties = [
+ {pos:1,name:"Mediterranean Ave",cost:60,rent:2,owner:null},
+ {pos:3,name:"Baltic Ave",cost:60,rent:4,owner:null},
+ {pos:5,name:"Reading RR",cost:200,rent:25,owner:null},
+ {pos:6,name:"Oriental Ave",cost:100,rent:6,owner:null},
+ {pos:8,name:"Vermont Ave",cost:100,rent:6,owner:null},
+ {pos:9,name:"Connecticut Ave",cost:120,rent:8,owner:null},
+ {pos:39,name:"Boardwalk",cost:400,rent:50,owner:null}
+];
+
+/* =========================
+   INIT
+========================= */
+
 function init(){
-  const names = playersInput.value.split(",").map(x=>x.trim()).filter(Boolean);
-  const start = +startCash.value || 1500;
+  players = playersInput.value.split(",").map(x=>x.trim()).filter(Boolean);
 
-  players = names;
+  let start = +startCash.value || 1500;
 
   players.forEach(p=>{
-    balances[p]=start;
-    positions[p]=0;
+    balance[p]=start;
+    position[p]=0;
   });
 
   setup.style.display="none";
   app.style.display="block";
 
   render();
-  log("Game started");
+  log("Game initialized (NO ROUND SYSTEM)");
 }
 
-/* MOVE SYSTEM (KEY FIX: independent players, no shared rounds) */
+/* =========================
+   EVENT ENGINE (CORE FIX)
+========================= */
+
 function move(){
-  const p = movePlayer.value;
-  const roll = +document.getElementById("roll").value || 0;
+  let p = playerSelect.value;
+  let roll = +document.getElementById("roll").value || 0;
 
-  let pos = positions[p];
-  let newPos = pos + roll;
+  let oldPos = position[p];
+  let newPos = oldPos + roll;
 
-  if(newPos >= 40){
-    newPos %= 40;
-    balances[p] += 200;
+  /* GO RULE */
+  if(newPos >= boardSize){
+    newPos %= boardSize;
+    balance[p] += 200;
     log(`${p} passed GO (+$200)`);
   }
 
-  positions[p]=newPos;
+  position[p] = newPos;
 
   log(`${p} moved ${roll} → ${newPos}`);
+
+  resolveLanding(p, newPos);
+
   render();
 }
 
-/* RENDER */
-function render(){
-  renderLedger();
+/* =========================
+   LANDING LOGIC (REAL RULES)
+========================= */
 
-  movePlayer.innerHTML = players.map(p=>`<option>${p}</option>`).join("");
+function resolveLanding(player, pos){
+
+  let tile = properties.find(t=>t.pos === pos);
+
+  if(!tile) return;
+
+  if(tile.owner === null){
+    if(confirm(`${player} landed on ${tile.name}. Buy for $${tile.cost}?`)){
+      tile.owner = player;
+      balance[player] -= tile.cost;
+      log(`${player} bought ${tile.name}`);
+    } else {
+      log(`${player} declined ${tile.name}`);
+    }
+  }
+
+  else if(tile.owner !== player){
+    balance[player] -= tile.rent;
+    balance[tile.owner] += tile.rent;
+    log(`${player} paid $${tile.rent} to ${tile.owner}`);
+  }
 }
 
-/* LEDGER */
-function renderLedger(){
+/* =========================
+   RENDER
+========================= */
+
+function render(){
+
+  playerSelect.innerHTML =
+    players.map(p=>`<option>${p}</option>`).join("");
+
   ledger.innerHTML="";
 
   players.forEach(p=>{
-    const row=document.createElement("div");
-    row.className="ledger-row";
+    let div=document.createElement("div");
+    div.className="ledger-row";
 
-    if(balances[p]<0) row.classList.add("red");
+    if(balance[p]<0) div.classList.add("red");
 
-    row.innerHTML=`
-      <div>${p} <span class="small">(Pos ${positions[p]})</span></div>
-      <div>$${balances[p]}</div>
+    div.innerHTML=`
+      <div>
+        ${p}
+        <div class="small">Pos ${position[p]}</div>
+      </div>
+      <div>$${balance[p]}</div>
     `;
 
-    ledger.appendChild(row);
+    ledger.appendChild(div);
+  });
+
+  board.innerHTML="";
+
+  properties.forEach(t=>{
+    let div=document.createElement("div");
+
+    div.className="property";
+    div.style.background = t.owner ? "#2ecc71" : "#7f8c8d";
+
+    div.innerHTML=`
+      <div>${t.name}</div>
+      <div>${t.owner || "Bank"}</div>
+    `;
+
+    board.appendChild(div);
   });
 }
 
-/* LOG */
+/* =========================
+   LOG SYSTEM
+========================= */
+
 function log(msg){
-  const t = new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
-  logBox.innerHTML = `[${t}] ${msg}<br>` + logBox.innerHTML;
+  let time=new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+  logBox.innerHTML=`[${time}] ${msg}<br>` + logBox.innerHTML;
 }
+
+const logBox=document.getElementById("log");
 
 </script>
 
