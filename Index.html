@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"/>
+<title>Monopoly Banker Companion</title>
+
+<style>
+:root{
+  --bg:#f2f3f7;
+  --card:#ffffff;
+  --text:#1c1c1e;
+  --muted:#8e8e93;
+  --shadow:0 6px 18px rgba(0,0,0,0.08);
+  --radius:14px;
+}
+
+*{box-sizing:border-box; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial;}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  overflow-x:hidden;
+}
+
+h2,h3{margin:8px 0;}
+
+.container{padding:14px; padding-bottom:120px;}
+
+button{
+  border:none;
+  border-radius:14px;
+  padding:14px;
+  font-size:16px;
+  font-weight:600;
+  background:#007aff;
+  color:white;
+  width:100%;
+  margin-top:8px;
+}
+
+button.secondary{background:#e5e5ea; color:#111;}
+button.danger{background:#ff3b30;}
+
+input,select{
+  width:100%;
+  padding:14px;
+  border-radius:12px;
+  border:1px solid #ddd;
+  margin-top:8px;
+  font-size:16px;
+  background:white;
+}
+
+.row{display:flex; gap:10px;}
+.row > *{flex:1;}
+
+.hidden{display:none;}
+
+.card{
+  background:var(--card);
+  border-radius:var(--radius);
+  padding:12px;
+  margin-top:10px;
+  box-shadow:var(--shadow);
+}
+
+.property{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  padding:10px;
+  border-radius:12px;
+  margin-top:8px;
+  color:white;
+  font-weight:700;
+}
+
+.small{font-size:12px; opacity:0.9;}
+
+.ledger-row{
+  display:flex;
+  justify-content:space-between;
+  padding:10px;
+  border-bottom:1px solid #eee;
+}
+
+.red{color:#ff3b30 !important;}
+
+.log{
+  height:140px;
+  overflow-y:auto;
+  font-family:monospace;
+  font-size:12px;
+  background:#111;
+  color:#0f0;
+  padding:10px;
+  border-radius:12px;
+}
+
+/* Bottom Sheet Modal */
+#modalBackdrop{
+  position:fixed;
+  left:0; top:0;
+  width:100%; height:100%;
+  background:rgba(0,0,0,0.4);
+  display:none;
+}
+
+#modal{
+  position:fixed;
+  bottom:0;
+  left:0;
+  width:100%;
+  background:white;
+  border-radius:18px 18px 0 0;
+  padding:14px;
+  box-shadow:0 -10px 30px rgba(0,0,0,0.2);
+  transform:translateY(100%);
+  transition:0.25s ease;
+}
+
+#modal.show{
+  transform:translateY(0);
+}
+
+.badge{
+  display:inline-block;
+  padding:4px 8px;
+  border-radius:10px;
+  font-size:12px;
+  background:#ddd;
+  margin-left:6px;
+}
+
+.prop-grid{
+  display:grid;
+  grid-template-columns:1fr;
+}
+
+@media(min-width:500px){
+  .prop-grid{grid-template-columns:1fr 1fr;}
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<!-- SETUP -->
+<div id="setup">
+  <h2>Monopoly Banker</h2>
+
+  <input id="playersInput" placeholder="Player names (comma separated)" />
+  <input id="startCash" type="number" inputmode="numeric" value="1500" />
+
+  <button onclick="initGame()">Initialize</button>
+</div>
+
+<!-- DASHBOARD -->
+<div id="app" class="hidden">
+
+  <h3>Property Creator</h3>
+
+  <input id="pName" placeholder="Property name" />
+  <select id="pColor">
+    <option>Brown</option>
+    <option>Light Blue</option>
+    <option>Pink</option>
+    <option>Orange</option>
+    <option>Red</option>
+    <option>Yellow</option>
+    <option>Green</option>
+    <option>Dark Blue</option>
+    <option>Special</option>
+  </select>
+
+  <div class="row">
+    <input id="pCost" type="number" inputmode="numeric" placeholder="Buy Cost" />
+    <input id="pRent" type="number" inputmode="numeric" placeholder="Rent" />
+  </div>
+
+  <input id="pPass" type="number" inputmode="numeric" placeholder="Pass Fee" />
+
+  <button onclick="addProperty()">Add to Board</button>
+
+  <h3>Board</h3>
+  <div id="board" class="prop-grid"></div>
+
+  <h3>Ledger</h3>
+  <div id="ledger"></div>
+
+  <button onclick="addGO()">+ GO ($200 each)</button>
+
+  <h3>Log</h3>
+  <div id="log" class="log"></div>
+
+</div>
+</div>
+
+<!-- MODAL -->
+<div id="modalBackdrop" onclick="closeModal()"></div>
+<div id="modal">
+  <h3>Edit Property</h3>
+
+  <input id="mName" />
+  <input id="mRent" type="number" inputmode="numeric" placeholder="Rent"/>
+  <input id="mPass" type="number" inputmode="numeric" placeholder="Pass Fee"/>
+
+  <div class="row">
+    <input id="houses" type="number" inputmode="numeric" placeholder="Houses (0-4)" />
+    <input id="hotels" type="number" inputmode="numeric" placeholder="Hotels (0-1)" />
+  </div>
+
+  <select id="activePlayer"></select>
+
+  <button onclick="buyProperty()">Buy Property</button>
+  <button onclick="payRent()">Landed: Pay Rent</button>
+  <button onclick="payPass()">Passed: Pay Fee</button>
+  <button class="danger" onclick="relinquish()">Relinquish Ownership</button>
+</div>
+
+<script>
+
+let players = [];
+let balances = {};
+let properties = [];
+let current = null;
+
+const colors = {
+  Brown:"#8b5a2b",
+  "Light Blue":"#5dade2",
+  Pink:"#ff6b81",
+  Orange:"#ff9f43",
+  Red:"#ff3b30",
+  Yellow:"#f1c40f",
+  Green:"#2ecc71",
+  "Dark Blue":"#1e3799",
+  Special:"#7f8c8d"
+};
+
+function initGame(){
+  const names = document.getElementById("playersInput").value.split(",").map(n=>n.trim()).filter(Boolean);
+  const start = parseInt(document.getElementById("startCash").value||1500);
+
+  players = names;
+  players.forEach(p=>balances[p]=start);
+
+  document.getElementById("setup").classList.add("hidden");
+  document.getElementById("app").classList.remove("hidden");
+
+  renderLedger();
+  log("Game initialized");
+}
+
+function addProperty(){
+  const p = {
+    id:Date.now(),
+    name:pName.value,
+    color:pColor.value,
+    cost:+pCost.value,
+    rent:+pRent.value,
+    pass:+pPass.value,
+    owner:null,
+    houses:0,
+    hotels:0
+  };
+
+  properties.push(p);
+  renderBoard();
+  log(`Added ${p.name}`);
+}
+
+function renderBoard(){
+  board.innerHTML="";
+  properties.sort((a,b)=>a.color.localeCompare(b.color));
+
+  properties.forEach(p=>{
+    const div=document.createElement("div");
+    div.className="property";
+    div.style.background=colors[p.color];
+    div.innerHTML=`
+      <div>
+        ${p.name}
+        <div class="small">
+          ${p.owner||"Bank"} 
+          ${"🏡".repeat(p.houses)}${"🏨".repeat(p.hotels)}
+        </div>
+      </div>
+      <div>$${p.cost}</div>
+    `;
+
+    div.onclick=()=>openModal(p);
+    board.appendChild(div);
+  });
+}
+
+function openModal(p){
+  current=p;
+  modalBackdrop.style.display="block";
+  modal.classList.add("show");
+
+  mName.value=p.name;
+  mRent.value=p.rent;
+  mPass.value=p.pass;
+  houses.value=p.houses;
+  hotels.value=p.hotels;
+
+  activePlayer.innerHTML = players.map(p=>`<option>${p}</option>`).join("");
+}
+
+function closeModal(){
+  modalBackdrop.style.display="none";
+  modal.classList.remove("show");
+}
+
+function buyProperty(){
+  const player=activePlayer.value;
+  balances[player]-=current.cost;
+  current.owner=player;
+  log(`${player} bought ${current.name} for $${current.cost}`);
+  update();
+}
+
+function payRent(){
+  const from=activePlayer.value;
+  const to=current.owner;
+  if(!to) return;
+
+  balances[from]-=current.rent;
+  balances[to]+=current.rent;
+
+  log(`${from} paid $${current.rent} rent to ${to}`);
+  update();
+}
+
+function payPass(){
+  const from=activePlayer.value;
+  const to=current.owner;
+  if(!to) return;
+
+  balances[from]-=current.pass;
+  balances[to]+=current.pass;
+
+  log(`${from} paid $${current.pass} pass fee to ${to}`);
+  update();
+}
+
+function relinquish(){
+  current.owner=null;
+  current.houses=0;
+  current.hotels=0;
+  log(`${current.name} returned to bank`);
+  update();
+}
+
+function update(){
+  renderLedger();
+  renderBoard();
+}
+
+function renderLedger(){
+  ledger.innerHTML="";
+  players.forEach(p=>{
+    const row=document.createElement("div");
+    row.className="ledger-row";
+    if(balances[p]<0) row.classList.add("red");
+
+    row.innerHTML=`
+      <div>${p}</div>
+      <div>$${balances[p]}</div>
+    `;
+    ledger.appendChild(row);
+  });
+}
+
+function addGO(){
+  players.forEach(p=>balances[p]+=200);
+  log("Everyone collected $200 (GO)");
+  renderLedger();
+}
+
+function log(msg){
+  const time=new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+  logBox.innerHTML=`[${time}] ${msg}<br>` + logBox.innerHTML;
+}
+
+const logBox=document.getElementById("log");
+
+</script>
+</body>
+</html>
